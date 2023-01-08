@@ -1,21 +1,37 @@
 use image::{ImageBuffer, Pixel, Rgb, RgbImage};
 use num::complex::Complex;
+use std::sync::mpsc::channel;
+use threadpool::ThreadPool;
 
 fn main() {
     // Save the image to a file or display it in some way...
     let (width, height) = (1920, 1080);
-    let mut img = RgbImage::new(width, height);
+    let mut img = ImageBuffer::new(width, height);
     let complex = Complex::new(-0.7269, 0.1889);
     let iterations = 300;
 
+    // create a thread pool
+    let pool = ThreadPool::new(num_cpus::get());
+
+    let (sender, receiver) = channel();
+
+    // divide the task with threads
     for y in 0..height {
-        for x in 0..width {
-            let i = julia(complex, x, y, width, height, iterations);
-            let pixel = wavelength_to_rgb(380 + i * 400 / iterations);
-            img.put_pixel(x, y, pixel);
-        }
+        let sender = sender.clone();
+        pool.execute(move || {
+            for x in 0..width {
+                let i = julia(complex, x, y, width, height, iterations);
+                let pixel = wavelength_to_rgb(380 + i * 400 / iterations);
+                sender.send((x, y, pixel)).expect("Error");
+            }
+        });
     }
-    img.save("sample.jpg").unwrap();
+
+    for _ in 0..(width * height) {
+        let (x, y, pixels) = receiver.recv().unwrap();
+        img.put_pixel(x, y, pixels);
+    }
+    img.save("fractal.png").unwrap();
 }
 
 // julia set creator
